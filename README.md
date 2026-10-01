@@ -20,7 +20,7 @@ indirizzi). Se coincidono, il dispositivo fa quello che promette.
 
 | Wallet | Metodo verificato | Fonte |
 | --- | --- | --- |
-| **Coldcard MK4 / MK5 / Q** | `New Seed Words → Advanced → 12/24 Word Dice Roll` (dice-only): `SHA256(sequenza ASCII dei lanci)`, troncato a 16 byte prima della somma di controllo per 12 parole — equivalente a `rolls.py` / `rolls12.py` | [Verifying Dice Roll Math](https://coldcard.com/docs/verifying-dice-roll-math/) |
+| **Coldcard MK4 / MK5 / Q** | Due procedure. **Standard** (fw ≥ 5.6.2 / 1.5.2Q, `New Seed Words → 12/24 Words`): il seed del dispositivo (24 parole "View TRNG Words") è mescolato con dadi o monete — `SHA256d(b'CC\x01S' + scopo + metodo + seed_device + SHA256(b'CC\x01' + metodo + simboli))`, equivalente a `verify_seed_mix.py`; "Mash Keys" non è verificabile. **Solo dadi** (`New Seed Words → Advanced → 12/24 Word Dice Roll`): `SHA256(sequenza ASCII dei lanci)`, troncato a 16 byte per 12 parole — equivalente a `rolls.py` / `rolls12.py` | [verify_seed_mix.py](https://github.com/Coldcard/firmware/blob/master/docs/verify_seed_mix.py) · [Verifying Dice Roll Math](https://coldcard.com/docs/verifying-dice-roll-math/) |
 | **BitBox02 / Nova** | Metodo Shift "Roll your own Bitcoin seed": 5×D6 (solo 1–4) + moneta per parola, poi `Restore from recovery words`; il dispositivo propone le 8/128 parole finali valide | [Blog Shift](https://blog.bitbox.swiss/en/roll-the-dice-generate-your-own-seed/) · [Tabella PDF](https://bitbox.swiss/bitbox02/BitBox_Diceware_LookupTable.pdf) |
 | **SeedSigner (DIY)** | `Tools → New Seed (dadi)`: stesso algoritmo del Coldcard — `SHA256(sequenza ASCII dei lanci)`, troncato a 16 byte per 12 parole; 50/99 lanci esatti | [dice_verification.md](https://github.com/SeedSigner/seedsigner/blob/master/docs/dice_verification.md) |
 
@@ -56,13 +56,14 @@ npm run build   # build statica in dist/
 ```
 src/core/        logica pura e testata (nessuna dipendenza da React)
   coldcard.ts    SHA256 dei lanci, troncamento, soglie 50/99, warning distribuzione
+  coldcardMix.ts mix seed dispositivo + entropia utente (Coldcard fw ≥ 5.6.2)
                  (stesso algoritmo usato dal SeedSigner)
   wordDice.ts    tabella dadi→parola BitBox (5×D6+moneta)
   finalWord.ts   parole di controllo finali valide (8/32/128)
   generic.ts     D6 senza bias, moneta, hex → entropia BIP39
   derive.ts      fingerprint, xpub (+SLIP-132), indirizzi BIP84/86/49/44
   address.ts     codifica P2WPKH, P2TR, P2SH-P2WPKH, P2PKH
-src/wizards/     le procedure guidate (Coldcard, SeedSigner, BitBox02, parola finale)
+src/wizards/     le procedure guidate (Coldcard standard e solo dadi, SeedSigner, BitBox02, parola finale)
 src/components/  UI: disclaimer, selezione wallet, inserimento dadi, candidate, derivazioni
 deploy/          copie versionate dei file lato server (gatekeeper WP+EDD, contatore)
 ```

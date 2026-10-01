@@ -8,11 +8,18 @@ import {
 import { Callout, WizardShell, WordGrid } from '../components/ui.tsx'
 import { DeriveView } from '../components/DeriveView.tsx'
 import { ResultScreen } from '../components/ResultScreen.tsx'
+import { ColdcardMixWizard } from './ColdcardMixWizard.tsx'
 import type { Outcome, SeedLength } from './types.ts'
 
 const STEPS = ['Preparazione', 'Lunghezza seed', 'Lanci di dado', 'Confronto parole', 'Verifica avanzata', 'Esito']
 
-export function ColdcardWizard({ onExit }: { onExit: () => void }) {
+function ColdcardDiceOnlyWizard({
+  onExit,
+  onChangeProcedure,
+}: {
+  onExit: () => void
+  onChangeProcedure: () => void
+}) {
   const [step, setStep] = useState(0)
   const [nwords, setNwords] = useState<SeedLength | null>(null)
   const [rolls, setRolls] = useState('')
@@ -33,22 +40,23 @@ export function ColdcardWizard({ onExit }: { onExit: () => void }) {
   return (
     <WizardShell
       title="Coldcard"
-      badge="MK4 · MK5 · Q"
+      badge="Solo dadi"
       step={step}
       totalSteps={STEPS.length}
       stepLabel={STEPS[step]}
       onRestart={onExit}
-      onBack={step > 0 && step < 5 ? () => setStep((s) => s - 1) : undefined}
+      onBack={step === 0 ? onChangeProcedure : step < 5 ? () => setStep((s) => s - 1) : undefined}
     >
       {step === 0 && (
         <div>
           <div className="card">
-            <h2>Come funziona la verifica</h2>
+            <h2>Procedura solo dadi</h2>
             <p>
-              Il Coldcard, in modalità dadi, calcola il seed come{' '}
-              <code>SHA256(sequenza dei lanci)</code>: un calcolo deterministico che chiunque può
-              rifare. Inserirai la <strong>stessa sequenza di prova</strong> sul dispositivo e in
-              questa app, e confronterai hash live, parole e indirizzi.
+              In questa procedura il seed dipende <strong>esclusivamente dai tuoi lanci</strong>:
+              il Coldcard non aggiunge alcuna entropia hardware (te lo ricorderà con un avviso).
+              Il seed è <code>SHA256(sequenza dei lanci)</code>, un calcolo deterministico che
+              chiunque può rifare. Inserirai la <strong>stessa sequenza di prova</strong> sul
+              dispositivo e in questa app, e confronterai hash live, parole e indirizzi.
             </p>
             <h3>Ti serve</h3>
             <ul>
@@ -61,13 +69,25 @@ export function ColdcardWizard({ onExit }: { onExit: () => void }) {
             </ul>
             <h3>Sul dispositivo</h3>
             <p>
-              Menu: <span className="menu-path">New Seed Words → Advanced → 12/24 Word Dice Roll</span>
+              Seed principale:{' '}
+              <span className="menu-path">New Seed Words → Advanced → 12/24 Word Dice Roll</span>
               <br />
               <span className="muted small">
-                (oppure, senza cancellare il seed attuale: <span className="menu-path">Advanced/Tools → Temporary Seed → Generate Words → Dice Roll</span>)
+                (oppure, senza cancellare il seed attuale:{' '}
+                <span className="menu-path">
+                  Advanced/Tools → Temporary Seed → Generate Words → 12/24 Word Dice Roll
+                </span>
+                ; in questa procedura seed principale e temporaneo danno le stesse parole)
               </span>
             </p>
           </div>
+          <Callout kind="info" title="Non confondere le due procedure">
+            <p>
+              Le voci <em>12 Words / 24 Words</em> senza &ldquo;Dice Roll&rdquo; avviano
+              l&rsquo;altra procedura, quella standard (Coldcard + tua entropia). Se è quella che
+              vuoi verificare, torna indietro e scegli &ldquo;Seed standard&rdquo;.
+            </p>
+          </Callout>
           <div className="btn-row">
             <button className="btn primary big" onClick={() => setStep(1)}>
               Avanti →
@@ -107,7 +127,8 @@ export function ColdcardWizard({ onExit }: { onExit: () => void }) {
               Lancia il dado e inserisci ogni risultato <strong>in entrambi</strong>: prima qui,
               poi sul dispositivo (o viceversa, nello stesso ordine). L&rsquo;hash qui sotto deve
               coincidere <em>ad ogni lancio</em> con quello mostrato dal Coldcard. Tocca i tasti
-              del dispositivo in modo netto: tenerli premuti può registrare lanci doppi.
+              del dispositivo in modo netto: nei firmware precedenti alla 5.6.1 / 1.5.1Q un tasto
+              tenuto premuto poteva registrare lanci doppi.
             </p>
             <div className="roll-counter">
               {rolls.length} <span className="target">/ {minRolls} lanci minimi</span>
@@ -134,17 +155,17 @@ export function ColdcardWizard({ onExit }: { onExit: () => void }) {
           </div>
 
           {diceDistributionSuspicious(rolls) && rolls.length >= 10 && (
-            <Callout kind="warn" title="Distribuzione sospetta">
+            <Callout kind="warn" title="Il Coldcard rifiuterà questa sequenza">
               <p>
-                Una faccia supera il 30% dei lanci: il Coldcard mostrerà lo stesso avviso
-                (&ldquo;Distribution of dice rolls is not random&rdquo;). Per una prova va bene;
-                per un seed reale servono lanci genuini.
+                Una faccia supera il 30% dei lanci: il Coldcard mostrerà l&rsquo;avviso
+                &ldquo;Distribution of dice rolls is not random&rdquo; e interromperà la creazione
+                del seed. Rendi la sequenza più varia, qui e sul dispositivo.
               </p>
             </Callout>
           )}
 
           <div className="btn-row">
-            <button className="btn primary big push" disabled={rolls.length < minRolls} onClick={() => setStep(3)}>
+            <button className="btn primary big push" disabled={rolls.length < minRolls || diceDistributionSuspicious(rolls)} onClick={() => setStep(3)}>
               Ho finito i lanci →
             </button>
           </div>
@@ -214,5 +235,67 @@ export function ColdcardWizard({ onExit }: { onExit: () => void }) {
         <ResultScreen outcome={outcome} walletName="Coldcard" onFinish={onExit} />
       )}
     </WizardShell>
+  )
+}
+
+type Procedure = 'mix' | 'dice'
+
+const PROCEDURES: { id: Procedure; title: string; badge: string; desc: string; menu: string }[] = [
+  {
+    id: 'mix',
+    title: 'Seed standard: Coldcard + tua entropia',
+    badge: 'firmware 5.6.2 / 1.5.2Q o successivi',
+    menu: 'New Seed Words → 12 Words / 24 Words',
+    desc:
+      'La procedura normale. Il Coldcard genera un proprio seed con i generatori hardware e lo mescola obbligatoriamente con la tua entropia (dadi o monete). Verifichi che il mix avvenga davvero, usando le parole “View TRNG Words”.',
+  },
+  {
+    id: 'dice',
+    title: 'Solo dadi',
+    badge: 'nessuna entropia hardware',
+    menu: 'New Seed Words → Advanced → 12/24 Word Dice Roll',
+    desc:
+      'La procedura avanzata. Il seed nasce esclusivamente dai tuoi lanci, senza alcun contributo del dispositivo. Verifichi che il Coldcard usi proprio i tuoi lanci.',
+  },
+]
+
+export function ColdcardWizard({ onExit }: { onExit: () => void }) {
+  const [procedure, setProcedure] = useState<Procedure | null>(null)
+  const back = () => setProcedure(null)
+
+  if (procedure === 'mix') return <ColdcardMixWizard onExit={onExit} onChangeProcedure={back} />
+  if (procedure === 'dice') return <ColdcardDiceOnlyWizard onExit={onExit} onChangeProcedure={back} />
+
+  return (
+    <div>
+      <div className="wizard-top">
+        <h1>Coldcard</h1>
+        <span className="badge accent">MK4 · MK5 · Q</span>
+        <span className="spacer" style={{ flex: 1 }} />
+        <button className="btn ghost" onClick={onExit}>
+          ✕ Annulla e cancella
+        </button>
+      </div>
+      <div className="card">
+        <h2>Quale procedura vuoi verificare?</h2>
+        <p className="muted">
+          Il Coldcard ha due modi di creare un seed con la tua entropia. Scegli quello che
+          userai sul dispositivo: Bitropia rifarà esattamente quel calcolo.
+        </p>
+      </div>
+      {PROCEDURES.map((p) => (
+        <button key={p.id} className="select-card" onClick={() => setProcedure(p.id)}>
+          <div className="card-title">
+            {p.title}
+            <span className="badge">{p.badge}</span>
+          </div>
+          <div className="card-desc">
+            <span className="menu-path">{p.menu}</span>
+            <br />
+            {p.desc}
+          </div>
+        </button>
+      ))}
+    </div>
   )
 }

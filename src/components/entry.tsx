@@ -100,24 +100,42 @@ export function BitboxWordBuilder({
 export function ManualWordsForm({
   count,
   onComplete,
+  title,
+  intro,
+  validate,
+  initial,
 }: {
   count: number
   onComplete: (words: string[]) => void
+  title?: ReactNode
+  intro?: ReactNode
+  /** Controllo sull'insieme delle parole: restituisce un messaggio d'errore o null. */
+  validate?: (words: string[]) => string | null
+  /** Parole già inserite in precedenza (tornando indietro nel wizard). */
+  initial?: readonly string[] | null
 }) {
-  const [values, setValues] = useState<string[]>(Array(count).fill(''))
+  const [values, setValues] = useState<string[]>(
+    initial && initial.length === count ? [...initial] : Array(count).fill(''),
+  )
   const states = values.map((v) => {
     const w = v.toLowerCase().trim()
     if (w === '') return 'empty'
     return wordlist.includes(w) ? 'ok' : 'bad'
   })
   const allOk = states.every((s) => s === 'ok')
+  const cleaned = values.map((v) => v.toLowerCase().trim())
+  const setError = allOk && validate ? validate(cleaned) : null
 
   return (
     <div className="card">
-      <h3>Inserisci le prime {count} parole</h3>
+      <h3>{title ?? <>Inserisci le prime {count} parole</>}</h3>
       <p className="muted small">
-        Hai già estratto le parole con il metodo cartaceo ufficiale? Inseriscile qui (solo parole
-        di PROVA). L&rsquo;ultima parola si calcola al passo successivo.
+        {intro ?? (
+          <>
+            Hai già estratto le parole con il metodo cartaceo ufficiale? Inseriscile qui (solo
+            parole di PROVA). L&rsquo;ultima parola si calcola al passo successivo.
+          </>
+        )}
       </p>
       <datalist id="bip39-wordlist">
         {wordlist.map((w) => (
@@ -143,11 +161,16 @@ export function ManualWordsForm({
           </div>
         ))}
       </div>
+      {setError && (
+        <p className="small" style={{ color: 'var(--err)' }}>
+          {setError}
+        </p>
+      )}
       <div className="btn-row">
         <button
           className="btn primary"
-          disabled={!allOk}
-          onClick={() => onComplete(values.map((v) => v.toLowerCase().trim()))}
+          disabled={!allOk || setError !== null}
+          onClick={() => onComplete(cleaned)}
         >
           Continua →
         </button>

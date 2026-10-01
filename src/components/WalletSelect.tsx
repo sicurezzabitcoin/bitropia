@@ -11,9 +11,9 @@ const WALLETS: {
     id: 'coldcard',
     name: 'Coldcard',
     models: 'MK4 · MK5 · Q',
-    method: 'Dadi inseriti sul dispositivo',
+    method: 'Due procedure: standard e solo dadi',
     desc:
-      'Il Coldcard calcola il seed direttamente dai tuoi lanci di dado (SHA256 della sequenza). Inserirai gli stessi lanci qui e sul dispositivo, e confronterai hash e parole.',
+      'Verifichi entrambe le procedure del Coldcard: quella standard, in cui il seed del dispositivo è mescolato obbligatoriamente con la tua entropia, e quella solo dadi, in cui il seed nasce esclusivamente dai tuoi lanci.',
   },
   {
     id: 'bitbox02',

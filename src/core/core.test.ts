@@ -9,6 +9,14 @@ import { bitboxRollsToIndex, indexToWord, wordToIndex } from './wordDice.ts'
 import { expectedCandidateCount, finalWordCandidates } from './finalWord.ts'
 import { bitsToEntropy, coinFlipToBit, d6RollToBits, entropyToWords, hexToEntropy } from './generic.ts'
 import { deriveWalletInfo, xpubToSlip132 } from './derive.ts'
+import {
+  bytesToHex,
+  coldcardMixMnemonic,
+  coldcardMixSeed,
+  mixDistributionSuspicious,
+  mixUserEntropy,
+  trngWordsToSeed,
+} from './coldcardMix.ts'
 
 const ABANDON_12 =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
@@ -188,5 +196,82 @@ describe('Coerenza incrociata wordDice/wordToIndex', () => {
     for (const i of [0, 1, 136, 408, 1223, 2047]) {
       expect(wordToIndex(indexToWord(i))).toBe(i)
     }
+  })
+})
+
+describe('Coldcard mix TRNG + entropia utente (firmware 5.6.1+)', () => {
+  // Vettori prodotti dallo script ufficiale Coinkite docs/verify_seed_mix.py
+  const TRNG_WORDS =
+    'maid photo evoke riot head entry waste peace fuel curtain sponsor same jaguar topic cloth since way midnight today cruise broccoli purchase approve year'.split(
+      ' ',
+    )
+  const TRNG_HEX = '861475385d16a0977ded0e5de6c749df7773ca0af649f8118f8d1a51c75c42b7'
+  const DICE = '456123456123456123456123456123456123456123456123456123456123' // 60 lanci
+  const COINS =
+    '01100100110010011001001100100110010011001001100100110010011001001100100110010011001001100100110010011001001100100110010011001001' // 128
+
+  it('le 24 parole TRNG decodificano nei 32 byte del dispositivo', () => {
+    expect(bytesToHex(trngWordsToSeed(TRNG_WORDS))).toBe(TRNG_HEX)
+    expect(() => trngWordsToSeed(TRNG_WORDS.slice(0, 12))).toThrow()
+  })
+
+  it('dadi, master, 24 parole → vettore di verify_seed_mix.py', () => {
+    const base = trngWordsToSeed(TRNG_WORDS)
+    expect(bytesToHex(coldcardMixSeed(base, DICE, 'dice', 24))).toBe(
+      '1b406d648d117849f6e80a7cab93d330bb59ae1ccfb0b9cfd9124e6e960b7ab6',
+    )
+  })
+
+  it('dadi, master, 12 parole → primi 16 byte dello stesso hash', () => {
+    const base = trngWordsToSeed(TRNG_WORDS)
+    expect(bytesToHex(coldcardMixSeed(base, DICE, 'dice', 12))).toBe(
+      '1b406d648d117849f6e80a7cab93d330',
+    )
+  })
+
+  it('seed temporaneo (scopo T) produce un risultato diverso dal master', () => {
+    const base = trngWordsToSeed(TRNG_WORDS)
+    expect(bytesToHex(coldcardMixSeed(base, DICE, 'dice', 24, 'temporary'))).toBe(
+      '804eaa7f8d8bf268b8d578243ba185f34d69f8497ffaf7ac5b70fe05e078d0be',
+    )
+  })
+
+  it('monete, master, 24 parole → vettore di verify_seed_mix.py', () => {
+    const base = trngWordsToSeed(TRNG_WORDS)
+    expect(bytesToHex(coldcardMixSeed(base, COINS, 'coin', 24))).toBe(
+      '1e3ea81ec31a6fa90af586adbe5fe116ccf46e056a3964ff50dfed714016c698',
+    )
+  })
+
+  it('mnemonica attesa completa (24 parole)', () => {
+    const base = trngWordsToSeed(TRNG_WORDS)
+    const w = coldcardMixMnemonic(base, DICE, 'dice', 24)
+    expect(w).toHaveLength(24)
+    expect(w[0]).toBe('brave')
+    expect(w[23]).toBe('soup')
+  })
+
+  it('separazione di dominio: stesso simbolo, metodo diverso → entropia diversa', () => {
+    expect(bytesToHex(mixUserEntropy('1'.repeat(128), 'dice'))).not.toBe(
+      bytesToHex(mixUserEntropy('1'.repeat(128), 'coin')),
+    )
+  })
+
+  it('soglie minime e alfabeto applicati', () => {
+    const base = trngWordsToSeed(TRNG_WORDS)
+    const fifty = '12345'.repeat(10) // esattamente 50: accettato
+    expect(fifty).toHaveLength(50)
+    expect(() => coldcardMixSeed(base, fifty, 'dice', 24)).not.toThrow()
+    expect(() => coldcardMixSeed(base, fifty.slice(0, 49), 'dice', 24)).toThrow() // 49: rifiutato
+    expect(() => coldcardMixSeed(base, '10'.repeat(63) + '1', 'coin', 24)).toThrow() // 127 < 128
+    expect(() => coldcardMixSeed(base, '7'.repeat(50), 'dice', 24)).toThrow()
+    expect(() => coldcardMixSeed(base, '2'.repeat(128), 'coin', 24)).toThrow()
+  })
+
+  it('avvisi di distribuzione come il firmware (dadi >30%, monete >65%)', () => {
+    expect(mixDistributionSuspicious('1'.repeat(50), 'dice')).toBe(true)
+    expect(mixDistributionSuspicious('123456'.repeat(10), 'dice')).toBe(false)
+    expect(mixDistributionSuspicious('1'.repeat(90) + '0'.repeat(38), 'coin')).toBe(true)
+    expect(mixDistributionSuspicious('10'.repeat(64), 'coin')).toBe(false)
   })
 })
